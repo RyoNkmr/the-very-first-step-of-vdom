@@ -1,0 +1,28 @@
+{
+  "name": "the-very-first-step-of-vdom",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "parcel serve ./assets/index.html"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RyoNkmr/the-very-first-step-of-vdom.git"
+  },
+  "author": "RyoNkmr",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/RyoNkmr/the-very-first-step-of-vdom/issues"
+  },
+  "homepage": "https://github.com/RyoNkmr/the-very-first-step-of-vdom#readme",
+  "devDependencies": {
+    "parcel": "^2.0.0-beta.3.1"
+  },
+  "dependencies": {
+    "@types/react": "^17.0.9",
+    "@types/react-dom": "^17.0.6",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  }
+}
