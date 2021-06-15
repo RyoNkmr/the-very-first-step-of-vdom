@@ -7,7 +7,7 @@ const BigButton: React.FC = ({ children, ...rest }) => (
   </button>
 );
 
-const Hello: React.FC = () => {
+const HelloComponent: React.FC = () => {
   const [count, setCount] = useState(0);
   const increment = useCallback(() => {
     setCount(count + 1);
@@ -25,4 +25,4 @@ const Hello: React.FC = () => {
   );
 };
 
-render(<Hello />, document.getElementById("app"));
+render(<HelloComponent />, document.getElementById("app"));
