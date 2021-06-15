@@ -1,3 +1,8 @@
+type Immutable<T> = T extends object ? ImmutableObject<T> : Readonly<T>;
+type ImmutableObject<T> = {
+  readonly [P in keyof T]: Immutable<T[P]>;
+};
+
 export type MutationType<S> = {
   [K: string]: (state: Readonly<S>, payload: any) => S;
 };
@@ -22,12 +27,12 @@ export class Store<S extends object, M extends MutationType<S>> {
     });
   }
 
-  public get commit(): Omit<M, "_mutationBrand"> {
+  public get commit(): Omit<M, '_mutationBrand'> {
     return this._mutation as any;
   }
 
-  public get getter(): S {
-    return this._getter;
+  public get getter(): Immutable<S> {
+    return this._getter as any;
   }
 }
 
