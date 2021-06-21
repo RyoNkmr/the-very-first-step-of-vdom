@@ -34,6 +34,11 @@ export class Store<S extends object, M extends MutationType<S>> {
   public get getter(): Immutable<S> {
     return this._getter as any;
   }
+
+  public next(state: S): self {
+    this._state = state;
+    return this;
+  }
 }
 
 export const createMutation = <S extends object, M extends MutationType<S>>(
