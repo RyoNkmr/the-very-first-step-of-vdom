@@ -1,20 +1,58 @@
-import type { Store } from './store'
+import { updateVNodeTree, mount } from './vnode';
 
-export class App<Store<S, M>> {
-  private renderRequestId = null;
+import type { FunctionComponent, Context } from './vnode';
+import type { Store } from './store';
 
-  constructor(private rootElement: HTMLElement, private store: Store<S, M>) {}
+type RenderOption<S extends Store<any, any>> = {
+  store: S;
+};
 
-  private render(): void {
-    if (this.renderRequestId !== null) {
+export const render = <S extends Store<any, any>>(
+  element: FunctionComponent<Context<S>, {}>,
+  container: HTMLElement,
+  { store }: RenderOption<S>
+) => {
+  let renderRequestId: number | null = null;
+  const render = () => {
+    console.log({ renderRequestId });
+    updateVDOM();
+    renderRequestId = null;
+  };
+
+  const queueRender = () => {
+    if (renderRequestId !== null) {
       return;
     }
-    // NOTE: 描画最適化のための間引き
-    this.renderRequestId = window.requestAnimationFrame(() => this.__render())
-  }
-
-  private __render(entrypoint: HTMLElement): void {
-    // TODO rendering
-    this.renderRequestId = null;
+    renderRequestId = window.requestAnimationFrame(() => render());
   };
-}
+
+  const trapMutation = () => {
+    queueRender();
+  };
+  store.registerCommitObserver(trapMutation);
+
+  const context: Context<S> = { store };
+  const getTree = () => element(context, { children: [] });
+  console.log({ element: element.toString() })
+
+  let currentTree = getTree();
+  let nextTree: typeof currentTree;
+
+  mount(context, currentTree, container);
+
+  const updateVDOM = () => {
+    console.log('updated');
+    nextTree = getTree();
+    updateVNodeTree({ current: currentTree, next: nextTree, context });
+    currentTree = nextTree;
+  };
+
+  const stopUpdate = () => {
+    window.cancelAnimationFrame(renderRequestId);
+    renderRequestId = null;
+  };
+
+  return {
+    stopUpdate,
+  };
+};

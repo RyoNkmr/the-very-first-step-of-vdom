@@ -1,5 +1,5 @@
-import { createElement, createMutation, createStore } from "./index";
-import type { Store, Mutation, State } from "./index";
+import { h, createMutation, createStore, render } from "./index";
+import type { FC } from "./index";
 
 const state = {
   count: 0,
@@ -12,21 +12,28 @@ const mutation = createMutation(state, {
 });
 
 const store = createStore(state, mutation);
+const context = { store } as const
 
-const BigButton = ({ children, ...rest }) => (
-  <button style={{ fontSize: "30px" }} {...rest}>
+type Context = typeof context
+
+type BigButtonProps = {
+  size: number
+}
+
+const BigButton: FC<Context, BigButtonProps> = (_ctx, { size, children, ...rest }) => (
+  <button style={`font-size: '${size}px'`} {...rest}>
     {children}
   </button>
 );
 
-const HelloComponent = ({ store }) => {
+const HelloComponent: FC<Context> = ({ store }) => {
   return (
     <section>
-      <h1>Hello World from {count}</h1>
-      <BigButton onClick={() => store.increment()}>+</BigButton>
-      <BigButton onClick={() => store.decrement()}>-</BigButton>
+      <h1>Hello World from {store.getter.count}</h1>
+      <BigButton size={30} onClick={() => store.commit.increment({ count: 1 })}>+</BigButton>
+      <BigButton size={30} onClick={() => store.commit.decrement({ count: 1 })}>-</BigButton>
     </section>
   );
 };
 
-render(<Hello />, document.getElementById("app"));
+render(HelloComponent, document.getElementById("app"), context);

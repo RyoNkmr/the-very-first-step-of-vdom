@@ -1,6 +1,6 @@
-export { App } from "./core";
-export { createElement } from "./vnode";
+export { render } from "./core";
+export { createElement as h } from "./vnode";
 export { createMutation, createStore } from "./store";
 
-export type { FC } from "./vnode";
+export type { FunctionComponent, FC, Context } from './vnode';
 export type { Store } from "./store";
