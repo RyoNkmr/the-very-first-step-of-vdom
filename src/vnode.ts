@@ -25,57 +25,47 @@ type FCParameter<Ctx extends Context<any>, P> = Attributes &
 type TextNodeType = symbol & { __textNodeTypeBrand: never };
 const NODE_TYPE_TEXT = Symbol('TextNode') as TextNodeType;
 
-export type Context<S extends Store<any, any>> = {
+type AnyStore = Store<any, any>
+type AnyContext = Context<AnyStore>;
+
+export type Context<S extends AnyStore> = {
   store: S;
 };
+
+type FCResult<Ctx extends AnyContext> = VNode<Ctx> | string | null;
 
 export type FunctionComponent<Ctx extends Context<Store<any, any>>, P = {}> = (
   context: Ctx,
   props: FCParameter<Ctx, P>
-) => VNode<Ctx, FunctionComponent<Ctx>> | VNode<Ctx, TagName> | string;
+) => FCResult<Ctx>
+
 // alias
 export type FC<
   Ctx extends Context<Store<any, any>>,
   P = {}
 > = FunctionComponent<Ctx, P>;
 
-// const a: FC<any, { size?: number }> = (_, { size, children }) => {
-//   return createElement('div', null, size.toString(), ...children)
-// }
+type TagName = string & { __TagNameBrand: never };
+type Children<Ctx extends Context<Store<any, any>>> = FCResult<Ctx>[];
 
-// const b: FC<any, {}> = () => {
-//   return createElement(a, { className: 'hoge', style: 'color: red;' },
-//     createElement('p', null, 'hoge'),
-//     createElement('p', null, 'fuga'),
-//   )
-// }
-
-// e.g. 'div' | () => <p />hoge<p />
-type TagName = string;
-type Child<Ctx extends Context<Store<any, any>>> =
-  | VNode<Ctx, FunctionComponent<Ctx> | TagName, unknown>
-  | string
-  | number
-  | undefined
-  | false
-  | null;
-type Children<Ctx extends Context<Store<any, any>>> = Child<Ctx>[];
-
-const isVNodeChild = <Ctx extends Context<Store<any, any>>>(
-  child: Child<Ctx>
-): child is VNode<Ctx, FunctionComponent<Ctx> | TagName, unknown> =>
-  child != null && typeof child === 'object';
-
-type VNodeComponent<
+type ComponentVNode<
   Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, P> | TagName,
-  P = {}
+  C extends FunctionComponent<Ctx, P>,
+  P extends Attributes = {}
 > = {
   component: C;
-  props: P & Attributes;
+  props: P;
   children: Children<Ctx>;
   $el: HTMLElement;
 };
+
+type TagVNode< Ctx extends Context<Store<any, any>>> = {
+  component: TagName;
+  props: Attributes;
+  children: Children<Ctx>;
+  $el: HTMLElement;
+};
+
 type VNodeTextNode = {
   component: TextNodeType;
   props: undefined;
@@ -83,36 +73,23 @@ type VNodeTextNode = {
   $el: Text;
 };
 
-export type VNode<
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, Props> | TagName,
-  Props extends FCParameter<Ctx, {}> = {}
-> = VNodeComponent<Ctx, C> | VNodeTextNode | EmptyNode;
-type VNodeInstance<
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, Props> | TagName,
-  Props extends FCParameter<Ctx, {}> = {}
-> = Exclude<VNode<Ctx, C, Props>, EmptyNode>;
+type VNodeInstance<Ctx extends Context<Store<any, any>>> = ComponentVNode<Ctx, any> | TagVNode<Ctx>
+export type VNode<Ctx extends Context<Store<any, any>>> = VNodeInstance<Ctx> | EmptyNode;
 
 const isEmptyNode = (vnode: unknown): vnode is EmptyNode =>
   vnode === null || vnode === undefined || vnode === false;
-const isVNodeInstance = <
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, P> | TagName,
-  P
->(
+
+const isVNodeInstance = <Ctx extends AnyContext>(
   vnode: unknown
-): vnode is VNodeInstance<Ctx, C, P> =>
+): vnode is VNodeInstance<Ctx> =>
   !isEmptyNode(vnode) &&
   Object.prototype.hasOwnProperty.call(vnode, 'component');
-const isVNodeComponent = <
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, P> | TagName,
-  P
->(
-  vnode: VNode<Ctx, C, P>
-): vnode is VNodeComponent<Ctx, C, P> =>
+
+const isComponentVNode = <Ctx extends AnyContext>(
+  vnode: VNode<Ctx>
+): vnode is ComponentVNode<Ctx> =>
   !isEmptyNode(vnode) && typeof vnode.children !== 'string';
+
 const isVNodeTextNode = (vnode: VNode<any, any>): vnode is VNodeTextNode =>
   !isEmptyNode(vnode) && vnode.component === NODE_TYPE_TEXT;
 
@@ -131,6 +108,7 @@ export type CreateElement = {
     ...children: Children<Ctx>
   ): VNodeComponent<Ctx, TagName, Props>;
 };
+
 export const createElement: CreateElement = <
   Ctx extends Context<Store<any, any>>,
   C extends FunctionComponent<Ctx, Props> | TagName,
@@ -155,11 +133,10 @@ const DIFF_DETECTOR_MAP: Record<
   Diff,
   <
     Ctx extends Context<Store<any, any>>,
-    C extends FunctionComponent<Ctx, Props> | TagName,
-    Props
+    C extends FunctionComponent<Ctx> | TagName,
   >(
-    current: VNodeInstance<Ctx, C, Props>,
-    next: VNodeInstance<Ctx, C, Props>
+    current: VNodeInstance<Ctx, C>,
+    next: VNodeInstance<Ctx, C>
   ) => boolean
 > = {
   // Component or TextNode
@@ -198,14 +175,14 @@ type VNodeUpdater = <
   C extends FunctionComponent<Ctx, Props> | TagName,
   Props
 >(
-  args: NodeTransitionParams<Ctx, VNodeInstance<Ctx, C, Props>>
+  args: NodeTransitionParams<Ctx, VNodeInstance<Ctx, C>>
 ) => void;
 type VNodeTreeUpdater = <
   Ctx extends Context<Store<any, any>>,
   C extends FunctionComponent<Ctx, Props> | TagName,
   Props
 >(
-  args: NodeTransitionParams<Ctx, VNode<Ctx, C, Props>>
+  args: NodeTransitionParams<Ctx, VNode<Ctx, C>>
 ) => void;
 
 const replaceElement: VNodeUpdater = ({ current, next, context }) =>
@@ -269,11 +246,31 @@ const updateAttribute = <
   });
 };
 
+const createVNodeTextNode = (text: string): VNodeTextNode => ({
+  component: NODE_TYPE_TEXT,
+  props: undefined,
+  children: text,
+  $el: undefined,
+});
+
+const handleRendered = <Ctx extends Context<Store<object, any>>>(rendered: ReturnType<FunctionComponent<Ctx, {}>>, context: Ctx) => {
+  if (typeof rendered === 'string') {
+    return document.createTextNode(rendered);
+  }
+  if (isEmptyNode(rendered)) {
+    return undefined;
+  }
+  if (isVNodeTextNode(rendered)) {
+    return document.createTextNode(rendered.children);
+  }
+  return rendered ? createRealNode(rendered as any, context) : undefined;
+}
+
 const createRealNode = <
   Ctx extends Context<Store<object, any>>,
-  C extends TagName | FunctionComponent<Ctx, unknown>
+  C extends FunctionComponent<Ctx> | TagName
 >(
-  node: VNodeInstance<Ctx, C, any>,
+  node: VNodeInstance<Ctx, C>,
   context: Ctx
 ): HTMLElement | Text | undefined => {
   // TextNode
@@ -286,13 +283,7 @@ const createRealNode = <
   // component
   if (typeof component === 'function') {
     const rendered = component(context, { ...props, children });
-    if (typeof rendered === 'string') {
-      return document.createTextNode(rendered);
-    }
-    if (isEmptyNode(rendered)) {
-      return undefined;
-    }
-    return rendered ? createRealNode(rendered, context) : undefined;
+    return handleRendered(rendered, context)
   }
 
   // TagName
@@ -306,9 +297,21 @@ const createRealNode = <
 
   const childrenElements = children.reduce((fragment, child: Child<Ctx>) => {
     if (isEmptyNode(child)) {
-      return fragment;
+      return fragment
     }
-    fragment.appendChild(createRealNode(child, context));
+    if (!isVNodeChild(child)) {
+      fragment.appendChild(document.createTextNode(child.toString()))
+      return fragment
+    }
+    if (isVNodeTextNode(child)) {
+        fragment.appendChild(document.createTextNode(child.children))
+        return fragment
+    }
+    const realNode = handleRendered(child as any, context);
+    if (realNode === undefined) {
+      return fragment
+    }
+    fragment.appendChild(realNode);
     return fragment;
   }, document.createDocumentFragment());
   element.appendChild(childrenElements);
@@ -326,13 +329,6 @@ const detectDiff: VNodeCompareFunction = ({ current, next }) =>
   (['VNODE_TYPE', 'TEXT', 'TAG', 'PROPS'] as Diff[]).find((diff) =>
     DIFF_DETECTOR_MAP[diff](current, next)
   );
-
-const createVNodeTextNode = (text: string): VNodeTextNode => ({
-  component: NODE_TYPE_TEXT,
-  props: undefined,
-  children: text,
-  $el: undefined,
-});
 
 export const mount = <
   Ctx extends Context<Store<any, any>>,
@@ -356,7 +352,6 @@ export const mount = <
         return createVNodeTextNode(child.toString());
       })
       .filter((node) => node !== undefined);
-    console.log({ component });
   }
   container.appendChild(component.$el);
   return component;

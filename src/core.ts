@@ -33,7 +33,6 @@ export const render = <S extends Store<any, any>>(
 
   const context: Context<S> = { store };
   const getTree = () => element(context, { children: [] });
-  console.log({ element: element.toString() })
 
   let currentTree = getTree();
   let nextTree: typeof currentTree;
