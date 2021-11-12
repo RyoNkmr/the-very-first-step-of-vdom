@@ -4,9 +4,10 @@ type ImmutableObject<T> = {
 };
 
 export type MutationType<S> = {
-  [K: string]: (state: Readonly<S>, payload: any) => S;
+  [K: string]: (state: Readonly<S>, payload?: unknown) => S;
 };
-type Mutation<M = {}> = M & { _mutationBrand: never };
+type MutationBrand = '_mutationBrand'
+type Mutation<M = {}> = M & { [key in MutationBrand]: never };
 type CommitObserver = () => void;
 
 export class Store<S extends object, M extends MutationType<S>> {
@@ -19,18 +20,20 @@ export class Store<S extends object, M extends MutationType<S>> {
     this._state = state;
     this._mutation = Object.entries(mutation).reduce((accmulator, [key, callback]) => ({
       ...accmulator,
-      [key]: (...args: Parameters<typeof callback>) => {
+      [key]: (...payload: Tail<Parameters<typeof callback>>) => {
+        console.log({ ...this._state })
+        this._state = callback(this._state, ...payload);
         this.dispatchCommitObserver()
-        callback(...args);
+        console.log({ ...this._state })
       },
     }), {} as M);
     this._getter = new Proxy(this._state, {
-      get: (target, prop, receiver) => {
+      get: (_, prop, receiver) => {
         if (!Object.prototype.hasOwnProperty.call(this._state, prop)) {
           console.warn(`${prop.toString()} is not a key of the state`);
           return undefined;
         }
-        return Reflect.get(target, prop, receiver);
+        return Reflect.get(this._state, prop, receiver);
       },
     });
   }
@@ -42,7 +45,7 @@ export class Store<S extends object, M extends MutationType<S>> {
     this._commitObserver = callback;
   }
 
-  public get commit(): Omit<M, '_mutationBrand'> {
+  public get commit(): CommitType<M> {
     return this._mutation as any;
   }
 
@@ -55,9 +58,15 @@ export class Store<S extends object, M extends MutationType<S>> {
     return this;
   }
 }
+type Tail<T> = T extends [unknown, ...infer T] ? T : never;
+type CommitType<MT extends MutationType<any>> = Omit<{
+  [Key in keyof MT]: Key extends string
+    ? (...args: Tail<Parameters<MT[Key]>>) => void
+    : never;
+}, MutationBrand>;
 
 export const createMutation = <S extends object, M extends MutationType<S>>(
-  state: S,
+  _state: S,
   mutation: M
 ): Mutation<M> => mutation as Mutation<M>;
 

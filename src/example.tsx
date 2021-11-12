@@ -20,18 +20,21 @@ type BigButtonProps = {
   size: number
 }
 
-const BigButton: FC<Context, BigButtonProps> = (_ctx, { size, children, ...rest }) => (
+const BigButton: FC<Context, BigButtonProps> = ({ size, children, ...rest }) => (
   <button style={`font-size: '${size}px'`} {...rest}>
     {children}
   </button>
 );
 
-const HelloComponent: FC<Context> = ({ store }) => {
+
+const HelloComponent: FC<Context> = (_, { store }) => {
+  const { commit, getter } = store;
   return (
     <section>
-      <h1>Hello World from {store.getter.count}</h1>
-      <BigButton size={30} onClick={() => store.commit.increment({ count: 1 })}>+</BigButton>
-      <BigButton size={30} onClick={() => store.commit.decrement({ count: 1 })}>-</BigButton>
+      <h1>Hello World from {getter.count}</h1>
+      <BigButton size={30} onClick={() => commit.add(getter.count)}>*2</BigButton>
+      <BigButton size={30} onClick={() => commit.increment()}>+</BigButton>
+      <BigButton size={30} onClick={() => commit.decrement()}>-</BigButton>
     </section>
   );
 };

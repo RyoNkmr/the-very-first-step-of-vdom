@@ -4,17 +4,30 @@
 import { Store } from './store';
 
 // ----------
-type EmptyNode = null | undefined | false;
+type EmptyValue = null | undefined | false;
+
+const isEmptyValue = (value: unknown): value is EmptyValue =>
+  value == null || value === false;
 
 // よくある Attr
 export type Attributes = {
   className?: string;
   style?: string;
+  onClick?: EventHandler;
 };
 
-type FCParameter<Ctx extends Context<any>, P> = Attributes &
+type AnyNode<Ctx extends AnyContext> =
+  | ComponentVNode<Ctx>
+  | TagVNode<Ctx>
+  | string
+  | number
+  | null
+  | undefined
+  | false;
+
+type FCParameter<Ctx extends AnyContext, P> = Attributes &
   P & {
-    children?: Children<Ctx>;
+    children?: AnyNode<Ctx>;
   };
 
 // --------------------
@@ -22,22 +35,17 @@ type FCParameter<Ctx extends Context<any>, P> = Attributes &
 // こいつが一番大事
 // --------------------
 
-type TextNodeType = symbol & { __textNodeTypeBrand: never };
-const NODE_TYPE_TEXT = Symbol('TextNode') as TextNodeType;
-
-type AnyStore = Store<any, any>
+type AnyStore = Store<any, any>;
 type AnyContext = Context<AnyStore>;
 
 export type Context<S extends AnyStore> = {
   store: S;
 };
 
-type FCResult<Ctx extends AnyContext> = VNode<Ctx> | string | null;
-
 export type FunctionComponent<Ctx extends Context<Store<any, any>>, P = {}> = (
-  context: Ctx,
-  props: FCParameter<Ctx, P>
-) => FCResult<Ctx>
+  props: FCParameter<Ctx, P>,
+  context?: Ctx
+) => AnyNode<Ctx>;
 
 // alias
 export type FC<
@@ -46,107 +54,195 @@ export type FC<
 > = FunctionComponent<Ctx, P>;
 
 type TagName = string & { __TagNameBrand: never };
-type Children<Ctx extends Context<Store<any, any>>> = FCResult<Ctx>[];
 
-type ComponentVNode<
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, P>,
-  P extends Attributes = {}
-> = {
-  component: C;
-  props: P;
-  children: Children<Ctx>;
-  $el: HTMLElement;
+type ComponentVNode<Ctx extends AnyContext> = {
+  component: FunctionComponent<Ctx>;
+  props: any;
+  children: AnyNode<Ctx>[];
+  $el: HTMLElement | null;
 };
 
-type TagVNode< Ctx extends Context<Store<any, any>>> = {
+type TagVNode<Ctx extends AnyContext> = {
   component: TagName;
   props: Attributes;
-  children: Children<Ctx>;
+  children: AnyNode<Ctx>[];
   $el: HTMLElement;
 };
 
-type VNodeTextNode = {
-  component: TextNodeType;
-  props: undefined;
-  children: string; // 本文
+const NODE_TYPE_TEXT = Symbol('__textnode');
+type ComponentTypeText = typeof NODE_TYPE_TEXT & { __TagNameBrand: never };
+
+type TextVNode = {
+  component: ComponentTypeText;
+  props: null;
+  children: string; // body
   $el: Text;
 };
 
-type VNodeInstance<Ctx extends Context<Store<any, any>>> = ComponentVNode<Ctx, any> | TagVNode<Ctx>
-export type VNode<Ctx extends Context<Store<any, any>>> = VNodeInstance<Ctx> | EmptyNode;
-
-const isEmptyNode = (vnode: unknown): vnode is EmptyNode =>
-  vnode === null || vnode === undefined || vnode === false;
-
-const isVNodeInstance = <Ctx extends AnyContext>(
-  vnode: unknown
-): vnode is VNodeInstance<Ctx> =>
-  !isEmptyNode(vnode) &&
-  Object.prototype.hasOwnProperty.call(vnode, 'component');
-
-const isComponentVNode = <Ctx extends AnyContext>(
-  vnode: VNode<Ctx>
-): vnode is ComponentVNode<Ctx> =>
-  !isEmptyNode(vnode) && typeof vnode.children !== 'string';
-
-const isVNodeTextNode = (vnode: VNode<any, any>): vnode is VNodeTextNode =>
-  !isEmptyNode(vnode) && vnode.component === NODE_TYPE_TEXT;
-
-// const isTagName = <Props>(component: FunctionComponent<Props> | TagName): component is TagName => typeof component === 'string'
+const createTextVNode = (text: any): TextVNode => ({
+  component: NODE_TYPE_TEXT as any,
+  props: null,
+  children: text.toString(),
+  $el: document.createTextNode(text),
+});
 
 // https://ja.reactjs.org/docs/react-api.html#createelement
 export type CreateElement = {
-  <Ctx extends Context<Store<any, any>>, Props>(
-    component: FunctionComponent<Ctx, Props>,
+  <Ctx extends AnyContext, Props>(
+    component: FunctionComponent<Ctx>,
     props: FCParameter<Ctx, Props> | null,
-    ...children: Children<Ctx>
-  ): VNodeComponent<Ctx, FunctionComponent<Ctx, Props>, Props>;
-  <Ctx extends Context<Store<any, any>>, Props>(
+    ...children: AnyNode<Ctx>[]
+  ): ComponentVNode<Ctx>;
+  <Ctx extends AnyContext, Props>(
     component: TagName,
     props: Props | null,
-    ...children: Children<Ctx>
-  ): VNodeComponent<Ctx, TagName, Props>;
+    ...children: AnyNode<Ctx>[]
+  ): TagVNode<Ctx>;
 };
 
 export const createElement: CreateElement = <
-  Ctx extends Context<Store<any, any>>,
+  Ctx extends AnyContext,
   C extends FunctionComponent<Ctx, Props> | TagName,
   Props = null
 >(
   component: C,
   props: Props extends null ? null : FCParameter<Ctx, Props>,
-  ...children: Children<Ctx>
-): VNodeComponent<Ctx, C, Props> => ({
+  ...children: AnyNode<Ctx>[]
+) => ({
   component,
   props: props ?? ({} as Props),
   children,
-  $el: undefined,
+  $el:
+    typeof component === 'string'
+      ? document.createElement(component)
+      : undefined,
 });
+
+const isTagVNode = <Ctx extends AnyContext>(
+  value: AnyNode<Ctx>
+): value is TagVNode<Ctx> =>
+  value != null &&
+  typeof value === 'object' &&
+  typeof value.component === 'string';
+
+type ComponentVNodeInternal<Ctx extends AnyContext> = Omit<
+  ComponentVNode<Ctx>,
+  'children'
+> & { children: VNodeInternal<Ctx>[] };
+type TagVNodeInternal<Ctx extends AnyContext> = Omit<
+  TagVNode<Ctx>,
+  'children'
+> & { children: VNodeInternal<Ctx>[] };
+
+const isTagVNodeInternal = <Ctx extends AnyContext>(
+  node: VNodeInternal<Ctx>
+): node is TagVNodeInternal<Ctx> =>
+  node !== null && typeof node.component === 'string';
+
+export type VNodeInternal<Ctx extends AnyContext> =
+  | ComponentVNodeInternal<Ctx>
+  | TagVNodeInternal<Ctx>
+  | TextVNode
+  | null;
+
+const convertVNodeInternal = <Ctx extends AnyContext>(
+  node: AnyNode<Ctx>
+): VNodeInternal<Ctx> => {
+  if (isEmptyValue(node)) {
+    return null;
+  }
+  if (typeof node === 'string' || typeof node === 'number') {
+    return createTextVNode(node);
+  }
+  const children = node.children.map(convertVNodeInternal);
+  return {
+    ...node,
+    children,
+  };
+};
+
+const mountVNodeInternal = <Ctx extends AnyContext>(
+  parentEl: HTMLElement,
+  root: VNodeInternal<Ctx>,
+  context: Ctx
+): void => {
+  if (root === null) {
+    return;
+  }
+  const walk = (parentEl: HTMLElement, target: VNodeInternal<Ctx>): void => {
+    if (target === null) {
+      return;
+    }
+    if (isTextVNode(target)) {
+      parentEl.appendChild(target.$el);
+      return;
+    }
+    const el = createRealNode(target, context) as any;
+    target.$el = el;
+    if (el === null) {
+      return;
+    }
+    parentEl.appendChild(el);
+    return target.children.forEach((child) => walk(el, child));
+  };
+  if (isTextVNode(root)) {
+    parentEl.appendChild(root.$el);
+    return;
+  }
+  root.children.forEach((child) => walk(root.$el, child));
+};
+
+const createRealNode = <Ctx extends AnyContext>(
+  node: VNodeInternal<Ctx>,
+  context: Ctx
+): HTMLElement | Text | null => {
+  // empty
+  if (isEmptyValue(node)) {
+    return null;
+  }
+  // TextNode
+  if (isTextVNode(node)) {
+    return document.createTextNode(node.children);
+  }
+
+  // TagName
+  if (isTagVNodeInternal(node)) {
+    const { component, props } = node;
+    const element = document.createElement(component);
+    // NOTE: other props are treated as html attrs
+    updateAttribute(element, props);
+    return element;
+  }
+
+  const { component, props } = node;
+  return createRealNode(
+    convertVNodeInternal(component(props, context)),
+    context
+  );
+};
 
 /* ----------
 /* 差分検知
 /* ----------*/
 type Diff = 'VNODE_TYPE' | 'TAG' | 'PROPS' | 'TEXT';
 
+const isTextVNode = (value: VNodeInternal<AnyContext>): value is TextVNode =>
+  value?.component === NODE_TYPE_TEXT;
+
 const DIFF_DETECTOR_MAP: Record<
   Diff,
-  <
-    Ctx extends Context<Store<any, any>>,
-    C extends FunctionComponent<Ctx> | TagName,
-  >(
-    current: VNodeInstance<Ctx, C>,
-    next: VNodeInstance<Ctx, C>
+  <Ctx extends AnyContext>(
+    current: VNodeInternal<Ctx>,
+    next: VNodeInternal<Ctx>
   ) => boolean
 > = {
-  // Component or TextNode
   VNODE_TYPE: (current, next) =>
     typeof current.component !== typeof next.component,
   // TextNodeの中身
   TEXT: (current, next) =>
-    isVNodeTextNode(current) &&
-    isVNodeTextNode(next) &&
-    typeof current.children !== typeof next.children,
+    isTextVNode(current) &&
+    isTextVNode(next) &&
+    current.children !== next.children,
   TAG: (current, next) => current.$el?.nodeName !== next.$el?.nodeName,
   PROPS: (current, next) =>
     JSON.stringify(current.props) !== JSON.stringify(next.props),
@@ -159,41 +255,28 @@ const RE_PATTRN_EVENT_HANDLER = /^on(\w+)$/;
 const isEventHandlerKey = (key: string): boolean =>
   RE_PATTRN_EVENT_HANDLER.test(key);
 const parseHandlingEventName = (key: string): string | undefined =>
-  (RE_PATTRN_EVENT_HANDLER.exec(key) || [])[1];
+  (RE_PATTRN_EVENT_HANDLER.exec(key) || [])[1]?.toLowerCase();
 
-type NodeTransitionParams<
-  Ctx extends Context<Store<any, any>>,
-  VN extends VNode<any, any>
-> = {
+type NodeTransitionParams<Ctx extends AnyContext, VN> = {
   current: VN | undefined;
   next: VN | undefined;
-  context: Ctx;
 };
 
-type VNodeUpdater = <
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, Props> | TagName,
-  Props
->(
-  args: NodeTransitionParams<Ctx, VNodeInstance<Ctx, C>>
+type VNodeUpdater = <Ctx extends AnyContext>(
+  args: NodeTransitionParams<Ctx, AnyNode<Ctx>>
 ) => void;
-type VNodeTreeUpdater = <
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, Props> | TagName,
-  Props
->(
-  args: NodeTransitionParams<Ctx, VNode<Ctx, C>>
+type VNodeInternalUpdater = <Ctx extends AnyContext>(
+  args: NodeTransitionParams<Ctx, VNodeInternal<Ctx>>
 ) => void;
 
-const replaceElement: VNodeUpdater = ({ current, next, context }) =>
+const replaceElement: VNodeInternalUpdater = ({ current, next }) =>
   current.$el.parentNode.replaceChild(
-    createRealNode(next, context),
+    next.$el,
     current.$el
   );
 
-const updateAttributes: VNodeUpdater = ({ current, next }) => {
-  if (!isVNodeComponent(current) || !isVNodeComponent(next)) {
-    console.warn('ミスってる');
+const updateAttributes: VNodeInternalUpdater = ({ current, next }) => {
+  if (isTextVNode(current) || isTextVNode(next)) {
     return;
   }
   // removed
@@ -216,7 +299,7 @@ const updateAttributes: VNodeUpdater = ({ current, next }) => {
   });
 };
 
-const DIFF_UPDATER_MAP: Record<Diff, VNodeUpdater> = {
+const DIFF_UPDATER_MAP: Record<Diff, VNodeInternalUpdater> = {
   VNODE_TYPE: replaceElement,
   TEXT: updateAttributes,
   TAG: replaceElement,
@@ -240,161 +323,79 @@ const updateAttribute = <
 ): void => {
   Object.entries(attributes ?? {}).forEach(([attrKey, value]) => {
     const eventName = parseHandlingEventName(attrKey);
+    console.log({ eventName, attrKey });
     eventName === undefined
       ? element.setAttribute(attrKey, value as string)
       : element.addEventListener(eventName, value as EventListener);
   });
 };
 
-const createVNodeTextNode = (text: string): VNodeTextNode => ({
-  component: NODE_TYPE_TEXT,
-  props: undefined,
-  children: text,
-  $el: undefined,
-});
-
-const handleRendered = <Ctx extends Context<Store<object, any>>>(rendered: ReturnType<FunctionComponent<Ctx, {}>>, context: Ctx) => {
-  if (typeof rendered === 'string') {
-    return document.createTextNode(rendered);
-  }
-  if (isEmptyNode(rendered)) {
-    return undefined;
-  }
-  if (isVNodeTextNode(rendered)) {
-    return document.createTextNode(rendered.children);
-  }
-  return rendered ? createRealNode(rendered as any, context) : undefined;
-}
-
-const createRealNode = <
-  Ctx extends Context<Store<object, any>>,
-  C extends FunctionComponent<Ctx> | TagName
->(
-  node: VNodeInstance<Ctx, C>,
-  context: Ctx
-): HTMLElement | Text | undefined => {
-  // TextNode
-  if (isVNodeTextNode(node)) {
-    return document.createTextNode(node.children);
-  }
-
-  const { component, children, props } = node;
-
-  // component
-  if (typeof component === 'function') {
-    const rendered = component(context, { ...props, children });
-    return handleRendered(rendered, context)
-  }
-
-  // TagName
-  const element = document.createElement(component);
-  // NOTE: other props are treated as html attrs
-  updateAttribute(element, props);
-
-  if (children == null || children.length === 0) {
-    return element;
-  }
-
-  const childrenElements = children.reduce((fragment, child: Child<Ctx>) => {
-    if (isEmptyNode(child)) {
-      return fragment
-    }
-    if (!isVNodeChild(child)) {
-      fragment.appendChild(document.createTextNode(child.toString()))
-      return fragment
-    }
-    if (isVNodeTextNode(child)) {
-        fragment.appendChild(document.createTextNode(child.children))
-        return fragment
-    }
-    const realNode = handleRendered(child as any, context);
-    if (realNode === undefined) {
-      return fragment
-    }
-    fragment.appendChild(realNode);
-    return fragment;
-  }, document.createDocumentFragment());
-  element.appendChild(childrenElements);
-  return element;
-};
-
-type VNodeCompareFunction = <
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, Props> | TagName,
-  Props
->(
-  args: NodeTransitionParams<Ctx, VNodeInstance<Ctx, C>>
+type VNodeCompareFunction = <Ctx extends AnyContext>(
+  args: NodeTransitionParams<Ctx, VNodeInternal<Ctx>>
 ) => Diff | undefined;
 const detectDiff: VNodeCompareFunction = ({ current, next }) =>
   (['VNODE_TYPE', 'TEXT', 'TAG', 'PROPS'] as Diff[]).find((diff) =>
     DIFF_DETECTOR_MAP[diff](current, next)
   );
 
-export const mount = <
-  Ctx extends Context<Store<any, any>>,
-  C extends FunctionComponent<Ctx, {}> | TagName
->(
-  context: Ctx,
-  component: VNodeInstance<Ctx, C>,
-  container: HTMLElement
-) => {
-  console.log({ component });
-  component.$el = createRealNode(component, context);
-  if (!isVNodeTextNode(component)) {
-    component.children = component.children
-      .map((child, index) => {
-        if (isEmptyNode(child)) {
-          return undefined;
-        }
-        if (isVNodeInstance(child)) {
-          return mount(context, child, component.$el);
-        }
-        return createVNodeTextNode(child.toString());
-      })
-      .filter((node) => node !== undefined);
+const _updateVNodeTree: VNodeInternalUpdater = ({ current, next }) => {
+  if (!isEmptyValue(current) && isEmptyValue(next)) {
+    current.$el.parentElement.removeChild(current.$el);
+    return;
   }
-  container.appendChild(component.$el);
-  return component;
-};
-
-// NOTE: update recursively
-export const updateVNodeTree: VNodeTreeUpdater = ({
-  current,
-  next,
-  context,
-}) => {
-  if (isEmptyNode(current) || isEmptyNode(next)) {
-    if (isVNodeInstance(current)) {
-      current.$el.parentElement.removeChild(current.$el);
-      return;
-    }
-    if (isVNodeInstance(next)) {
-      next.$el.parentElement.appendChild(createRealNode(next, context));
-      return;
-    }
+  if (isEmptyValue(current) && !isEmptyValue(next)) {
+    next.$el.parentElement.appendChild(next.$el);
     return;
   }
 
-  const diff = detectDiff({ current, next, context });
-  if (diff !== undefined) {
-    DIFF_UPDATER_MAP[diff]({ current, next, context });
+  const diff = detectDiff({ current, next });
+  if (diff === undefined) {
+    next.$el = current.$el;
+  } else {
+    DIFF_UPDATER_MAP[diff]({ current, next });
   }
 
   // NOTE: diff === 'TEXT' だと型わからんので
-  if (isVNodeTextNode(current) || isVNodeTextNode(next)) {
+  if (isTextVNode(current) || isTextVNode(next)) {
     return;
   }
 
   const { children } =
-    current.children.length > next.children.length ? current : next;
+    current.children?.length > next.children?.length ? current : next;
 
   children.forEach((_, index) => {
-    const _current = !isEmptyNode(current.children[index]) ? current.children[index] : undefined
-    const _next = !isEmptyNode(next.children[index]) ? next.children[index] : undefined
+    const _current = !isEmptyValue(current.children[index])
+      ? current.children[index]
+      : undefined;
+    const _next = !isEmptyValue(next.children[index])
+      ? next.children[index]
+      : undefined;
 
-      updateVNodeTree({
-        current: _current,
-        next: _next,
-        context,
+    _updateVNodeTree({
+      current: _current,
+      next: _next,
+    });
+  });
+};
+
+// external APIs
+export const mount = <Ctx extends AnyContext>(
+  context: Ctx,
+  root: AnyNode<Ctx>,
+  container: HTMLElement
+): void => {
+  const vnode = convertVNodeInternal(root);
+  mountVNodeInternal(container, vnode, context);
+  container.appendChild(vnode.$el);
+};
+
+// NOTE: update recursively
+export const updateVNodeTree: VNodeUpdater = ({
+  current,
+  next,
+}): void => {
+  _updateVNodeTree({
+    current: convertVNodeInternal(current),
+    next: convertVNodeInternal(next),
   });
 };

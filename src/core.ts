@@ -14,7 +14,6 @@ export const render = <S extends Store<any, any>>(
 ) => {
   let renderRequestId: number | null = null;
   const render = () => {
-    console.log({ renderRequestId });
     updateVDOM();
     renderRequestId = null;
   };
@@ -32,17 +31,17 @@ export const render = <S extends Store<any, any>>(
   store.registerCommitObserver(trapMutation);
 
   const context: Context<S> = { store };
-  const getTree = () => element(context, { children: [] });
+  const getCurrentTree = () => element({}, context);
 
-  let currentTree = getTree();
+  let currentTree = getCurrentTree()
   let nextTree: typeof currentTree;
 
   mount(context, currentTree, container);
 
   const updateVDOM = () => {
-    console.log('updated');
-    nextTree = getTree();
-    updateVNodeTree({ current: currentTree, next: nextTree, context });
+    nextTree = getCurrentTree();
+    console.log({ currentTree, nextTree });
+    updateVNodeTree({ current: currentTree, next: nextTree });
     currentTree = nextTree;
   };
 
